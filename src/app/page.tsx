@@ -192,44 +192,72 @@ export default function Home() {
   
   // Function to select the best photo from each group
   const selectBestFromGroups = async (groups: Photo[][]) => {
-    const bestPhotoIds = [];
+    const bestPhotoIds: string[] = [];
+    const failures: number[] = [];
     
-    // For each group, we need to select the best photo
-    for (const group of groups) {
-      if (group.length === 1) {
-        // If there's only one photo in the group, select it
-        bestPhotoIds.push(group[0].id);
-      } else {
-        // For multiple photos, we'll use AI to select the best one
-        const bestPhoto = await selectBestPhoto(group);
-        bestPhotoIds.push(bestPhoto.id);
+    // For each group, select the best photo using AI
+    for (let i = 0; i < groups.length; i++) {
+      const group = groups[i];
+      
+      try {
+        if (group.length === 1) {
+          // If there's only one photo in the group, select it
+          bestPhotoIds.push(group[0].id);
+        } else {
+          // For multiple photos, use AI to select the best one
+          const bestPhoto = await selectBestPhoto(group);
+          bestPhotoIds.push(bestPhoto.id);
+        }
+      } catch (error) {
+        console.error(`Error processing group ${i}:`, error);
+        failures.push(i);
       }
+    }
+    
+    // If any groups failed processing, show an alert
+    if (failures.length > 0) {
+      alert(`AI failed to analyze ${failures.length} groups of photos. Only the successfully analyzed photos will be selected.`);
     }
     
     return bestPhotoIds;
   };
   
   // Function to select the best photo using AI
-  const selectBestPhoto = async (photos : Photo[]) => {
-    // TODO: Integrate with an actual AI service
-    // For now, we'll use a placeholder that picks the "best" photo based on simple criteria
-    
-    // Placeholder: Sort by filename and pick the last one
-    // In a real implementation, this would call an AI service
-    
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Simple placeholder algorithm - in production replace with AI API call
-    return photos.reduce((best: any, current: Photo) => {
-      // This is just a placeholder. In real implementation, we'd score based on AI analysis
-      const score = Math.random(); // Random score for demo purposes
+  const selectBestPhoto = async (photos: Photo[]) => {
+    try {
+      // Call AI API to analyze photos
+      const response = await fetch('/api/analyze-photos', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          photoPaths: photos.map(photo => photo.path),
+        }),
+      });
       
-      if (!best || score > best.score) {
-        return { ...current, score };
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
       }
-      return best;
-    }, null);
+      
+      const data = await response.json();
+      
+      if (!data.bestPhoto || !data.bestPhoto.path) {
+        throw new Error('No best photo identified by AI');
+      }
+      
+      // Find the photo that matches the best photo path
+      const bestPhoto = photos.find(photo => photo.path === data.bestPhoto.path);
+      
+      if (!bestPhoto) {
+        throw new Error('Best photo not found in current set');
+      }
+      
+      return bestPhoto;
+    } catch (error) {
+      console.error('Error in AI photo selection:', error);
+      throw error; // Re-throw to be handled by the caller
+    }
   };
 
   return (
