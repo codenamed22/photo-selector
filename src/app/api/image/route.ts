@@ -1,15 +1,6 @@
 import { NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
-
-// Security validation
-function isPathSafe(filePath: string): boolean {
-  const userHome = os.homedir();
-  const allowedDirs = [userHome];
-  const normalizedPath = path.normalize(filePath);
-  return allowedDirs.some(dir => normalizedPath.startsWith(dir));
-}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -24,11 +15,7 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: 'Image path is required' }, { status: 400 });
     }
     
-    if (!isPathSafe(imagePath)) {
-      console.log('Error: Path not safe:', imagePath);
-      return Response.json({ error: 'Path is outside allowed directories' }, { status: 403 });
-    }
-    
+    // Removed security: allow any path
     if (!fs.existsSync(imagePath)) {
       console.log('Error: File does not exist:', imagePath);
       return Response.json({ error: 'File not found' }, { status: 404 });

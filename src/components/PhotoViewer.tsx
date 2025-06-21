@@ -29,6 +29,7 @@ export default function PhotoViewer({
   const [isLoading, setIsLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
   const [imageData, setImageData] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
   const currentPhoto = photos[currentIndex];
   
   // Fetch image data when current photo changes
@@ -107,8 +108,8 @@ export default function PhotoViewer({
   }
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-3xl">
-      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden relative aspect-video">
+    <div className="flex flex-col gap-4 w-[75vw] h-[75vh] max-w-none mx-auto">
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden relative flex-1 flex items-center justify-center">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-gray-300 border-t-foreground rounded-full animate-spin" />
@@ -129,6 +130,7 @@ export default function PhotoViewer({
                 src={imageData}
                 alt={currentPhoto.filename}
                 className="w-full h-full object-contain"
+                style={{ transform: `scale(${zoom})`, transition: 'transform 0.2s' }}
                 onError={() => setImageError(true)}
               />
             )}
@@ -142,6 +144,14 @@ export default function PhotoViewer({
                 onError={() => setImageError(true)}
               />
             )}
+            {/* View Full Size Button */}
+            <button
+              className="absolute top-2 right-2 bg-white bg-opacity-80 px-3 py-1 rounded shadow text-sm font-semibold hover:bg-opacity-100"
+              onClick={() => window.open(`/api/direct-image?path=${encodeURIComponent(currentPhoto.path)}`, '_blank')}
+              type="button"
+            >
+              View Full Size
+            </button>
           </>
         )}
 
@@ -187,6 +197,25 @@ export default function PhotoViewer({
           className="px-4 py-2 bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50"
         >
           Next
+        </button>
+      </div>
+
+      {/* Zoom controls */}
+      <div className="flex gap-2 mt-2 justify-center">
+        <button
+          className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+          onClick={() => setZoom(z => Math.max(0.5, z - 0.1))}
+          type="button"
+        >
+          -
+        </button>
+        <span className="px-2">{Math.round(zoom * 100)}%</span>
+        <button
+          className="px-2 py-1 bg-gray-200 rounded hover:bg-gray-300"
+          onClick={() => setZoom(z => Math.min(3, z + 0.1))}
+          type="button"
+        >
+          +
         </button>
       </div>
 
