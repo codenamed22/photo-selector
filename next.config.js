@@ -16,11 +16,8 @@ const nextConfig = {
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   
-  // Increase memory limits
-  experimental: {
-    isrMemoryCacheSize: 150 * 1024 * 1024, // 150MB
-    serverActions: true,
-  },
+  // Enable React Server Actions
+  serverActions: true,
   
   // External packages that should be treated as dependencies
   serverExternalPackages: ['fs', 'path', 'os'],
