@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface Photo {
   id: string;
@@ -31,6 +31,55 @@ export default function PhotoViewer({
   const [imageData, setImageData] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const currentPhoto = photos[currentIndex];
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  // Keep current thumbnail centered in preview pane
+  useEffect(() => {
+    if (previewContainerRef.current) {
+      const container = previewContainerRef.current;
+      const thumbnailWidth = 72; // w-[4.5rem]
+      const gap = 4; // gap-1
+      const scrollPosition = (thumbnailWidth + gap) * currentIndex;
+      const centerOffset = (container.clientWidth - thumbnailWidth) / 2;
+      
+      container.scrollTo({
+        left: scrollPosition - centerOffset,
+        behavior: 'smooth'
+      });
+    }
+  }, [currentIndex]);
+
+  // Add keyboard navigation
+  useEffect(() => {
+    function handleKeyPress(e: KeyboardEvent) {
+      // Only handle keyboard events if not in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          if (currentIndex > 0) {
+            onPrevious();
+          }
+          break;
+        case 'ArrowRight':
+          if (currentIndex < photos.length - 1) {
+            onNext();
+          }
+          break;
+        case ' ': // Spacebar
+          e.preventDefault(); // Prevent page scroll
+          if (currentPhoto) {
+            onSelect(currentPhoto.id, !currentPhoto.selected);
+          }
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentIndex, photos.length, currentPhoto, onNext, onPrevious, onSelect]);
   
   // Fetch image data when current photo changes
   useEffect(() => {
@@ -109,7 +158,7 @@ export default function PhotoViewer({
 
   return (
     <div className="flex flex-col gap-4 w-[75vw] h-[75vh] max-w-none mx-auto">
-      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden relative flex-1 flex items-center justify-center">
+      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden relative flex-1 flex items-center justify-center min-h-0">
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-gray-300 border-t-foreground rounded-full animate-spin" />
@@ -166,9 +215,13 @@ export default function PhotoViewer({
       </div>
       
       <div className="flex justify-between items-center">
-        <p className="text-sm">
-          {currentIndex + 1} of {photos.length}: {currentPhoto.filename}
-        </p>
+        <div className="flex items-center gap-4">
+          <p className="text-sm">
+            {currentIndex + 1} of {photos.length}: {currentPhoto.filename}
+          </p>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+          </div>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => onSelect(currentPhoto.id, !currentPhoto.selected)}
@@ -183,21 +236,85 @@ export default function PhotoViewer({
         </div>
       </div>
       
-      <div className="flex justify-between mt-4">
-        <button
-          onClick={onPrevious}
-          disabled={currentIndex === 0}
-          className="px-4 py-2 bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50"
+      {/* Preview slider */}
+      <div className="relative h-24 w-[360px] mx-auto bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
+        <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-gray-100 dark:from-gray-800 to-transparent z-10" />
+        <div className="absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-gray-100 dark:from-gray-800 to-transparent z-10" />
+        
+        <div className="flex gap-1 items-center absolute inset-y-0 left-1 z-20">
+          <button
+            onClick={onPrevious}
+            disabled={currentIndex === 0}
+            className="p-1 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 text-xs"
+          >
+            ←
+          </button>
+        </div>
+        
+        <div className="flex gap-1 items-center absolute inset-y-0 right-1 z-20">
+          <button
+            onClick={onNext}
+            disabled={currentIndex === photos.length - 1}
+            className="p-1 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 text-xs"
+          >
+            →
+          </button>
+        </div>
+
+        <div 
+          ref={previewContainerRef}
+          className="flex gap-1 p-1 overflow-x-auto hide-scrollbar h-full"
+          style={{
+            scrollBehavior: 'smooth',
+            msOverflowStyle: 'none',
+            scrollbarWidth: 'none'
+          }}
         >
-          Previous
-        </button>
-        <button
-          onClick={onNext}
-          disabled={currentIndex === photos.length - 1}
-          className="px-4 py-2 bg-foreground text-background rounded-md hover:opacity-90 disabled:opacity-50"
-        >
-          Next
-        </button>
+          {photos.map((photo, index) => {
+            // Only render previews for current photo and 2 photos before/after
+            const shouldRender = Math.abs(index - currentIndex) <= 2;
+            
+            return (
+              <button
+                key={photo.id}
+                onClick={() => {
+                  const newIndex = index;
+                  if (newIndex !== currentIndex) {
+                    if (newIndex > currentIndex) {
+                      onNext();
+                    } else {
+                      onPrevious();
+                    }
+                  }
+                }}
+                className={`relative flex-shrink-0 w-[4.5rem] h-[4.5rem] rounded-md overflow-hidden transition-all duration-200 ${
+                  index === currentIndex 
+                    ? 'ring-2 ring-blue-500 ring-offset-1 scale-105' 
+                    : 'opacity-70 hover:opacity-100'
+                }`}
+                style={{
+                  // Use empty div with same dimensions for non-rendered items
+                  // to maintain scroll position and spacing
+                  visibility: shouldRender ? 'visible' : 'hidden'
+                }}
+              >
+                {shouldRender && (
+                  <>
+                    <img
+                      src={`/api/direct-image?path=${encodeURIComponent(photo.path)}&preview=true`}
+                      alt={photo.filename}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                    {photo.selected && (
+                      <div className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full" />
+                    )}
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Zoom controls */}
