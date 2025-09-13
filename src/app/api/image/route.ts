@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import heicConvert from 'heic-convert';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -46,17 +47,40 @@ export async function GET(request: NextRequest) {
     }
     
     try {
-      // Read the file as base64
+      // Read the file
       const imageBuffer = fs.readFileSync(imagePath);
-      const base64Image = imageBuffer.toString('base64');
+      let processedBuffer = imageBuffer;
       
       // Get MIME type
       const fileExtension = path.extname(imagePath).toLowerCase();
       let contentType = 'image/jpeg'; // Default
-      if (fileExtension === '.png') contentType = 'image/png';
-      if (fileExtension === '.gif') contentType = 'image/gif';
-      if (fileExtension === '.webp') contentType = 'image/webp';
-      if (fileExtension === '.svg') contentType = 'image/svg+xml';
+      
+      // Handle HEIC files
+      if (fileExtension === '.heic' || fileExtension === '.heif') {
+        try {
+          // Convert HEIC to JPEG
+          processedBuffer = await heicConvert({
+            buffer: imageBuffer,
+            format: 'JPEG',
+            quality: 0.9
+          });
+          contentType = 'image/jpeg';
+        } catch (error) {
+          console.error('Error converting HEIC:', error);
+          return Response.json({ 
+            error: 'Failed to convert HEIC image',
+            details: error instanceof Error ? error.message : 'Unknown error'
+          }, { status: 500 });
+        }
+      } else {
+        // Handle other formats
+        if (fileExtension === '.png') contentType = 'image/png';
+        if (fileExtension === '.gif') contentType = 'image/gif';
+        if (fileExtension === '.webp') contentType = 'image/webp';
+        if (fileExtension === '.svg') contentType = 'image/svg+xml';
+      }
+      
+      const base64Image = processedBuffer.toString('base64');
       
       console.log('Successfully processed image:', {
         size: imageBuffer.length,

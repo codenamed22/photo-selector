@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
+import heicConvert from 'heic-convert';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,20 +27,56 @@ export async function POST(req: NextRequest) {
     
     const results = await Promise.allSettled(
       files.map(async (file) => {
-        const filename = path.basename(file);
-        const destination = path.join(destinationFolder, filename);
-        await fs.copyFile(file, destination);
-        return { path: file, success: true };
+        const extension = path.extname(file).toLowerCase();
+        const baseFilename = path.basename(file, extension);
+        
+        // Handle HEIC files by converting to JPEG
+        if (extension === '.heic' || extension === '.heif') {
+          const inputBuffer = await fs.readFile(file);
+          const outputBuffer = await heicConvert({
+            buffer: inputBuffer,
+            format: 'JPEG',
+            quality: 1.0  // Maximum quality (100%)
+          });
+          
+          // Save as JPEG
+          const destination = path.join(destinationFolder, `${baseFilename}.jpg`);
+          await fs.writeFile(destination, outputBuffer);
+          return { 
+            path: file, 
+            success: true, 
+            converted: true,
+            newPath: destination 
+          };
+        } else {
+          // Regular file copy for non-HEIC files
+          const destination = path.join(destinationFolder, path.basename(file));
+          await fs.copyFile(file, destination);
+          return { 
+            path: file, 
+            success: true,
+            converted: false,
+            newPath: destination 
+          };
+        }
       })
     );
     
-    const copied = results.filter(r => r.status === 'fulfilled').length;
+    const successful = results.filter(r => r.status === 'fulfilled');
     const failed = results.filter(r => r.status === 'rejected').length;
     
+    const converted = successful.filter(r => 
+      r.status === 'fulfilled' && r.value.converted
+    ).length;
+    
+    const copied = successful.length;
+    
     return NextResponse.json({
-      message: `Copied ${copied} files, ${failed} failed`,
+      message: `Copied ${copied} files (${converted} converted from HEIC), ${failed} failed`,
       copied,
-      failed
+      converted,
+      failed,
+      results: successful.map(r => r.status === 'fulfilled' ? r.value : null)
     });
   } catch (error) {
     console.error('Error copying files:', error);
