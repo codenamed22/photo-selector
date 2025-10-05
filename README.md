@@ -10,6 +10,13 @@ A Next.js application that uses multimodal LLMs to intelligently analyze and sel
 - 🖼️ Interactive photo viewer with similarity scores
 - 💡 AI reasoning for photo selection decisions
 
+<img width="2524" height="1369" alt="image" src="https://github.com/user-attachments/assets/a73039f1-0244-464b-a784-b131e046970c" />
+
+<img width="2729" height="873" alt="image" src="https://github.com/user-attachments/assets/11fbd9b3-1a84-4e9b-9c91-67f26b62f678" />
+
+<img width="1470" height="907" alt="image" src="https://github.com/user-attachments/assets/392efb57-c1e4-4846-b0a2-09cdc5b93c51" />
+
+
 ## Prerequisites
 
 - Node.js 20+ 
