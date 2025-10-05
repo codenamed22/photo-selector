@@ -1,22 +1,18 @@
 import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
+import fs from 'fs';
 import path from 'path';
-import sharp from 'sharp';
-import { createLLMClient, getModelName } from '@/lib/llm-client';
-import {
-  validatePhotoPaths,
-  ValidationError,
-  createErrorResponse,
-} from '@/lib/validation';
 
-// Lazy-load LLM client to avoid initialization at build time
-let client: ReturnType<typeof createLLMClient> | null = null;
-
-function getLLMClient() {
-  if (!client) {
-    client = createLLMClient();
-  }
-  return client;
-}
+// Uber GenAI API Gateway configuration
+const client = new OpenAI({
+  baseURL: process.env.GENAI_GATEWAY_URL || 'http://127.0.0.1:5436/v1', // Use 127.0.0.1 instead of localhost to force IPv4
+  apiKey: 'dummy', // Required by SDK but not used by gateway
+  organization: process.env.MA_STUDIO_PROJECT_UUID, // Your MA Studio project UUID
+  defaultHeaders: {
+    'Rpc-Service': 'genai-api',
+    'Rpc-Caller': process.env.SERVICE_NAME || 'photo-selector',
+  },
+});
 
 export interface BestPhotoResult {
   bestPhoto: {
@@ -63,20 +59,23 @@ function determineMimeType(filePath: string): string {
 }
 
 async function analyzePhotosWithLLM(photoPaths: string[]): Promise<BestPhotoResult> {
-  const imageContents = await Promise.all(photoPaths.map(async (photoPath) => {
-    const resizedBuffer = await sharp(photoPath)
-      .resize(1024, 1024, { fit: 'inside', withoutEnlargement: true })
-      .jpeg({ quality: 85 })
-      .toBuffer();
-    
-    const base64Image = resizedBuffer.toString('base64');
-    const dataUrl = `data:image/jpeg;base64,${base64Image}`;
+  console.log(`Analyzing ${photoPaths.length} photos with multimodal LLM...`);
+
+  // Prepare images for the API
+  const imageContents = photoPaths.map((photoPath, index) => {
+    const imageBuffer = fs.readFileSync(photoPath);
+    const base64Image = imageBuffer.toString('base64');
+    const mimeType = determineMimeType(photoPath);
+    const dataUrl = `data:${mimeType};base64,${base64Image}`;
     
     return {
       type: 'image_url' as const,
-      image_url: { url: dataUrl, detail: 'high' as const }
+      image_url: {
+        url: dataUrl,
+        detail: 'high' as const
+      }
     };
-  }));
+  });
 
   const prompt = `You are an expert photo quality analyst. Analyze these ${photoPaths.length} photos and determine which one is the best quality.
 
@@ -117,24 +116,37 @@ Respond in this EXACT JSON format:
   "bestPhotoReasoning": "Photo 1 is the best because..."
 }`;
 
-  const llmClient = getLLMClient();
-  const response = await llmClient.chat.completions.create({
-    model: getModelName(),
-    messages: [{
-      role: 'user',
-      content: [{ type: 'text', text: prompt }, ...imageContents]
-    }],
+  const response = await client.chat.completions.create({
+    model: process.env.MODEL_NAME || 'gpt-4o', // or gemini-2.0-flash-001 for multimodal
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          ...imageContents
+        ]
+      }
+    ],
     max_tokens: 2000,
     temperature: 0.3,
   });
 
   const content = response.choices[0].message.content;
-  if (!content) throw new Error('No response from LLM');
+  if (!content) {
+    throw new Error('No response from LLM');
+  }
 
+  console.log('LLM Response:', content);
+
+  // Parse the JSON response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Could not parse JSON from LLM response');
+  if (!jsonMatch) {
+    throw new Error('Could not parse JSON from LLM response');
+  }
 
   const analysis = JSON.parse(jsonMatch[0]);
+  
+  // Build the result
   const allPhotos = photoPaths.map((photoPath, index) => {
     const photoAnalysis = analysis.photos[index];
     
@@ -172,20 +184,36 @@ Respond in this EXACT JSON format:
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const { photoPaths } = await request.json();
     
-    // Validate inputs (max 10 photos for LLM analysis to avoid token limits)
-    const photoPaths = validatePhotoPaths(body.photoPaths, { maxCount: 10, maxLength: 1000 });
+    if (!photoPaths || !Array.isArray(photoPaths) || photoPaths.length === 0) {
+      return NextResponse.json({ error: 'Invalid photo paths' }, { status: 400 });
+    }
+
+    console.log(`Analyzing ${photoPaths.length} photos for best selection using LLM...`);
+    console.log('Photo paths:', photoPaths);
 
     const result = await analyzePhotosWithLLM(photoPaths);
+
+    console.log(`Best photo selected: ${result.bestPhoto.path} (score: ${result.bestPhoto.finalScore.toFixed(2)})`);
+    console.log(`Reasoning: ${result.bestPhoto.reasoning}`);
+
     return NextResponse.json(result);
 
   } catch (error) {
-    if (error instanceof ValidationError) {
-      return NextResponse.json(createErrorResponse(error, 400), { status: 400 });
-    }
     console.error('Error selecting best photo:', error);
-    return NextResponse.json(createErrorResponse(error, 500), { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    console.error('Full error details:', {
+      message: errorMessage,
+      stack: errorStack
+    });
+    
+    return NextResponse.json({ 
+      error: errorMessage,
+      details: errorStack
+    }, { status: 500 });
   }
 }
 
