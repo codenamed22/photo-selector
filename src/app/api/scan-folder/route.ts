@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import {
+  validateFolderPath,
+  validateBoolean,
+  validateEps,
+  validateMinPts,
+  ValidationError,
+  createErrorResponse,
+} from '@/lib/validation';
 
 const SUPPORTED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif'];
 
 export async function POST(req: NextRequest) {
   try {
-    const { folderPath } = await req.json();
+    const body = await req.json();
     
-    if (!folderPath) {
-      return NextResponse.json(
-        { error: 'Folder path is required' },
-        { status: 400 }
-      );
-    }
+    // Validate inputs
+    const folderPath = validateFolderPath(body.folderPath);
+    const autoGroup = validateBoolean(body.autoGroup, false);
+    const eps = validateEps(body.eps ?? 0.25);
+    const minPts = validateMinPts(body.minPts ?? 2);
     
-    // Check if folder exists
+    // Check folder exists
     try {
-      await fs.access(folderPath);
+      const stats = await fs.stat(folderPath);
+      if (!stats.isDirectory()) {
+        return NextResponse.json(
+          { error: 'Path is not a directory' },
+          { status: 400 }
+        );
+      }
     } catch (error) {
       return NextResponse.json(
         { error: 'Folder does not exist or is not accessible' },
@@ -25,20 +38,38 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    console.log('Starting folder scan:', folderPath);
     const { photos, stats } = await scanFolder(folderPath);
-    console.log('Scan complete:', stats);
     
-    return NextResponse.json({ 
-      photos,
-      stats
+    if (!autoGroup) {
+      return NextResponse.json({ photos, stats });
+    }
+
+    const groupResponse = await fetch(new URL('/api/group-photos', req.url).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ photos, eps, minPts }),
     });
+
+    if (!groupResponse.ok) {
+      return NextResponse.json({ photos, stats });
+    }
+
+    const groupData = await groupResponse.json();
+
+    return NextResponse.json({
+      photos,
+      stats,
+      groups: groupData.groups,
+      ungrouped: groupData.ungrouped,
+      groupStats: groupData.stats
+    });
+    
   } catch (error) {
+    if (error instanceof ValidationError) {
+      return NextResponse.json(createErrorResponse(error, 400), { status: 400 });
+    }
     console.error('Error scanning folder:', error);
-    return NextResponse.json(
-      { error: 'Failed to scan folder' },
-      { status: 500 }
-    );
+    return NextResponse.json(createErrorResponse(error, 500), { status: 500 });
   }
 }
 
