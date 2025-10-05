@@ -17,6 +17,7 @@ export default function Home() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedFolder, setSelectedFolder] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [similarityThreshold, setSimilarityThreshold] = useState(90); // 90% default
 
   const handleFolderSelected = async (folderPath: string) => {
     setIsScanning(true);
@@ -71,19 +72,48 @@ export default function Home() {
     try {
       const minPts = photos.length <= 3 ? 1 : 2;
       
+      // Convert similarity percentage to eps (distance)
+      // similarity = 85% → eps = 0.15 (1 - 0.85)
+      const eps = 1 - (similarityThreshold / 100);
+      
+      console.log(`🎯 Grouping with ${similarityThreshold}% similarity threshold (eps=${eps})`);
+      
       const response = await fetch('/api/group-photos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ photos, eps: 0.25, minPts }),
+        body: JSON.stringify({ photos, eps, minPts }),
       });
       
       if (!response.ok) throw new Error('Failed to group photos');
       
       const groupData = await response.json();
+      
+      // Log for debugging
+      console.log('📊 Grouping complete:', {
+        groups: groupData.groups.length,
+        totalPhotosInGroups: groupData.groups.reduce((sum: number, g: any[]) => sum + g.length, 0),
+        ungrouped: groupData.ungrouped.length,
+      });
+      
+      // Store in sessionStorage
       sessionStorage.setItem('photoGroups', JSON.stringify(groupData));
-      window.open('/results', '_blank');
+      
+      // Try to open in new tab
+      const newWindow = window.open('/results', '_blank');
+      
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === 'undefined') {
+        // Pop-up blocked - show alert with option to open manually
+        const shouldOpen = confirm(
+          `✅ Grouping complete! Found ${groupData.groups.length} groups.\n\n` +
+          `Pop-ups are blocked. Click OK to open results in the same tab, or enable pop-ups and try again.`
+        );
+        if (shouldOpen) {
+          window.location.href = '/results';
+        }
+      }
       
     } catch (error) {
+      console.error('Grouping error:', error);
       alert(`Error grouping photos: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsAiProcessing(false);
@@ -108,6 +138,30 @@ export default function Home() {
         
         {photos.length > 0 && (
           <>
+            {/* Similarity Threshold Control */}
+            <div className="w-full max-w-md bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md">
+              <label className="block mb-2">
+                <span className="font-medium">Similarity Threshold: {similarityThreshold}%</span>
+                <span className="text-sm text-gray-500 ml-2">
+                  (Higher = stricter grouping)
+                </span>
+              </label>
+              <input
+                type="range"
+                min="70"
+                max="95"
+                step="1"
+                value={similarityThreshold}
+                onChange={(e) => setSimilarityThreshold(Number(e.target.value))}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer dark:bg-gray-700"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>70% (loose)</span>
+                <span>85% (balanced)</span>
+                <span>95% (strict)</span>
+              </div>
+            </div>
+
             <PhotoViewer
               photos={photos}
               currentIndex={currentIndex}

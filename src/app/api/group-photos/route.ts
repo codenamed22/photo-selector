@@ -61,13 +61,24 @@ export async function POST(request: Request) {
     console.log(`Running DBSCAN with eps=${eps}, minPts=${minPts} on ${embeddingVectors.length} photos`);
     const { clusters, noise } = dbscan(embeddingVectors, eps, minPts);
     console.log(`DBSCAN results: ${clusters.length} clusters, ${noise.length} noise points`);
+    
+    // Log cluster sizes for debugging
+    clusters.forEach((cluster, i) => {
+      console.log(`  Cluster ${i + 1}: ${cluster.length} photos`);
+    });
 
     const photoGroups = clusters.map((clusterIndices) => {
-      return clusterIndices.map(idx => {
+      const group = clusterIndices.map(idx => {
         const embeddingData = validEmbeddings[idx];
-        return photos.find((p: any) => p.path === embeddingData.path);
+        const photo = photos.find((p: any) => p.path === embeddingData.path);
+        return photo;
       }).filter(Boolean);
+      
+      console.log(`  Mapped cluster to group with ${group.length} photos`);
+      return group;
     });
+    
+    console.log(`Final photoGroups count: ${photoGroups.length}, total photos in groups: ${photoGroups.reduce((sum, g) => sum + g.length, 0)}`);
 
     const ungroupedPhotos = noise.map(idx => {
       const embeddingData = validEmbeddings[idx];

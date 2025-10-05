@@ -61,20 +61,34 @@ export default function ResultsPage() {
   useEffect(() => {
     // Retrieve the group data from sessionStorage
     const storedData = sessionStorage.getItem('photoGroups');
+    console.log('🔍 Results page loaded, checking sessionStorage...');
+    console.log('   StoredData length:', storedData?.length || 0);
+    
     if (storedData) {
-      const data = JSON.parse(storedData) as GroupData;
-      setGroupData(data);
-      
-      // Store embeddings in a map for easy lookup
-      if (data.embeddings) {
-        const embMap = new Map<string, number[]>();
-        data.embeddings.forEach(item => {
-          if (item.embedding) {
-            embMap.set(item.path, item.embedding);
-          }
+      try {
+        const data = JSON.parse(storedData) as GroupData;
+        console.log('✅ Parsed groupData:', {
+          groups: data.groups.length,
+          ungrouped: data.ungrouped.length,
+          embeddings: data.embeddings?.length || 0,
         });
-        setEmbeddings(embMap);
+        setGroupData(data);
+        
+        // Store embeddings in a map for easy lookup
+        if (data.embeddings) {
+          const embMap = new Map<string, number[]>();
+          data.embeddings.forEach(item => {
+            if (item.embedding) {
+              embMap.set(item.path, item.embedding);
+            }
+          });
+          setEmbeddings(embMap);
+        }
+      } catch (error) {
+        console.error('❌ Failed to parse groupData:', error);
       }
+    } else {
+      console.warn('⚠️  No data found in sessionStorage');
     }
   }, []);
 
@@ -150,12 +164,44 @@ export default function ResultsPage() {
     return { avgSimilarity, minSimilarity, maxSimilarity };
   };
 
-  if (!groupData) {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Give it a moment to load sessionStorage
+    const timer = setTimeout(() => setIsLoading(false), 1000);
+    return () => clearTimeout(timer);
+  }, [groupData]);
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="w-8 h-8 border-4 border-gray-300 border-t-foreground rounded-full animate-spin mx-auto mb-4" />
           <p>Loading results...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!groupData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen p-8">
+        <div className="text-center max-w-md">
+          <h1 className="text-2xl font-bold mb-4 text-red-600">⚠️ No Data Found</h1>
+          <p className="text-gray-600 dark:text-gray-300 mb-4">
+            No grouping results found. This could happen if:
+          </p>
+          <ul className="text-left text-sm text-gray-500 dark:text-gray-400 mb-6 list-disc list-inside">
+            <li>You navigated here directly without grouping photos first</li>
+            <li>SessionStorage was cleared</li>
+            <li>The page was opened in a different browser tab</li>
+          </ul>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            ← Go Back to Home
+          </button>
         </div>
       </div>
     );
