@@ -16,7 +16,9 @@ export default function Home() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedFolder, setSelectedFolder] = useState('');
+  const [outputFolder, setOutputFolder] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [similarityThreshold, setSimilarityThreshold] = useState(90); // 90% default
 
   const handleFolderSelected = async (folderPath: string) => {
@@ -38,6 +40,7 @@ export default function Home() {
       const data = await response.json();
       setPhotos(data.photos || []);
       setSelectedFolder(folderPath);
+      setOutputFolder(`${folderPath}/selected`);
     } catch (error) {
       console.error('Error scanning folder:', error);
       alert(`Error scanning folder: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -61,6 +64,42 @@ export default function Home() {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  const handleSaveSelected = async () => {
+    const selectedPhotos = photos.filter(photo => photo.selected);
+
+    if (selectedPhotos.length === 0) {
+      alert('Please select at least one photo to export');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/copy-files', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          files: selectedPhotos.map(photo => photo.path),
+          destinationFolder: outputFolder,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to copy files');
+      }
+
+      const result = await response.json();
+      alert(`✅ Successfully exported ${result.copied} photos to:\n${outputFolder}`);
+    } catch (error) {
+      console.error('Error exporting files:', error);
+      alert(`❌ Error exporting photos: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -172,8 +211,28 @@ export default function Home() {
               isAiProcessing={isAiProcessing}
             />
             
-            <div className="w-full max-w-3xl mt-8">
-              <p className="font-medium text-center">
+            <div className="w-full max-w-3xl mt-8 bg-white dark:bg-gray-800 rounded-lg p-6 shadow-md">
+              <div className="flex justify-between items-center gap-4">
+                <div className="flex-1">
+                  <p className="font-medium mb-2">
+                    Selected: {photos.filter(p => p.selected).length} of {photos.length}
+                  </p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 break-all">
+                    Output folder: {outputFolder}
+                  </p>
+                </div>
+                <button
+                  onClick={handleSaveSelected}
+                  className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  disabled={!photos.some(p => p.selected) || isExporting}
+                >
+                  {isExporting ? 'Exporting...' : 'Export Selected'}
+                </button>
+              </div>
+            </div>
+            
+            <div className="w-full max-w-3xl">
+              <p className="font-medium text-center text-sm text-gray-600 dark:text-gray-400">
                 Viewing {photos.length} photo{photos.length !== 1 ? 's' : ''} from {selectedFolder}
               </p>
             </div>
